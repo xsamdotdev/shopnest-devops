@@ -16,12 +16,21 @@ const registerUser = async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    const otp = Math.floor(
+    100000 + Math.random() * 900000
+    ).toString();
 
-    const user = await User.create({ name, email, password: hashedPassword });
+    const user = await User.create({
+        name,
+        email,
+        password: hashedPassword,
+        otp,
+        otpExpires: Date.now() + 10 * 60 * 1000,
+        isVerified: false
+});
     if (user) {
       
       // Generate a mock OTP
-      const otp = Math.floor(100000 + Math.random() * 900000);
       
       // Send Welcome / OTP Email
       const message = `
@@ -37,12 +46,9 @@ const registerUser = async (req, res) => {
       });
 
       res.status(201).json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user._id)
-      });
+  message: 'Registration successful. Verify OTP.',
+  email: user.email
+});
     } else {
       res.status(400).json({ message: 'Invalid user data' });
     }
@@ -50,12 +56,65 @@ const registerUser = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+const verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
 
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found'
+      });
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).json({
+        message: 'Invalid OTP'
+      });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      return res.status(400).json({
+        message: 'OTP expired'
+      });
+    }
+
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpires = null;
+
+    await user.save();
+
+    res.json({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  token: generateToken(user._id)
+});
+
+  } catch (error) {
+    res.status(500).json({
+      message: error.message
+    });
+  }
+};
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
+     if (!user) {
+      return res.status(401).json({
+        message: 'Invalid email or password'
+      });
+    }
 
+    if (!user.isVerified) {
+  return res.status(403).json({
+    message: 'Please verify your email first'
+  });
+}
     if (user && (await bcrypt.compare(password, user.password))) {
       res.json({
         _id: user._id,
@@ -81,4 +140,4 @@ const getUsers = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, getUsers };
+module.exports = { registerUser, loginUser, getUsers,verifyOTP};

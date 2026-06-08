@@ -22,7 +22,11 @@ const Register = () => {
       if (res.ok) {
         alert('Registration Successful! Please check your email for the Welcome OTP.');
         login(data);
-        navigate('/');
+        navigate('/verify-otp', {
+        state: {
+        email: data.email
+      }
+});
       } else {
         alert(data.message);
       }
